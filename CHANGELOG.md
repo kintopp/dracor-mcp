@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **HTTP streaming server**: New `dracor-mcp-server/` subdirectory with streamable HTTP transport for cloud deployment
+  - `server.py`: Core MCP server with health check endpoint
+  - `main.py`: Entry point with stdio/HTTP transport selection via `TRANSPORT` env var
+  - `pyproject.toml` and `requirements.txt`: Dependencies for Railpack auto-detection
+  - `railway.json`: Railway.com deployment configuration
+- **Railway deployment**: Live at `https://dracor-mcp-production.up.railway.app/mcp`
+- **Transport security configuration**: Disabled DNS rebinding protection for Railway proxy compatibility
+- **CORS middleware**: Added for cross-origin MCP client requests
+
 ### Security
 
 - **Input validation**: Added `validate_name()` helper function that validates corpus and play name parameters against a whitelist regex (`^[a-zA-Z0-9_-]+$`). This prevents potential path traversal attacks since these values are interpolated into API URL paths. Applied to all 17 resource and tool functions that accept `corpus_name` or `play_name` parameters.

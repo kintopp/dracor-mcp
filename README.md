@@ -4,6 +4,8 @@ A Model Context Protocol (MCP) server for interacting with the Drama Corpora Pro
 
 ## Recent Changes
 
+- **HTTP streaming server**: New `dracor-mcp-server/` subdirectory with Railway.com deployment support
+- **Cloud deployment**: Live at `https://dracor-mcp-production.up.railway.app/mcp`
 - **MCP SDK upgrade**: Upgraded to v1.25.0 for Claude Desktop compatibility (protocol version 2025-06-18)
 - **Request timeouts**: All HTTP requests now have a 30-second timeout to prevent hangs
 - **Input validation**: Corpus and play names are validated to prevent path traversal attacks
@@ -20,6 +22,29 @@ This project implements an MCP server using the official Model Context Protocol 
 The project includes two implementations:
 
 1. `dracor_mcp_fastmcp.py` - Streamlined implementation using the FastMCP decorator-based API with v1 API
+2. `dracor-mcp-server/` - HTTP streaming server for cloud deployment (Railway.com)
+
+## Cloud Deployment
+
+The DraCor MCP server is available as a hosted service:
+
+**MCP Endpoint**: `https://dracor-mcp-production.up.railway.app/mcp`
+
+### Claude Desktop Configuration (Remote)
+
+To use the hosted server, add to your Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "dracor": {
+      "url": "https://dracor-mcp-production.up.railway.app/mcp"
+    }
+  }
+}
+```
+
+This requires no local installation - Claude Desktop connects directly to the hosted server.
 
 ## Features
 
