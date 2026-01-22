@@ -6,8 +6,11 @@ from mcp.server.fastmcp import FastMCP
 import os
 
 # Base API URL for DraCor v1
-# Set the Base URL in the environment variable DRACOR_API_BASE_URL 
+# Set the Base URL in the environment variable DRACOR_API_BASE_URL
 DRACOR_API_BASE_URL = str(os.environ.get("DRACOR_API_BASE_URL", "https://dracor.org/api/v1"))
+
+# Default timeout for HTTP requests (in seconds)
+DEFAULT_TIMEOUT = 30
 
 # Create the FastMCP server instance
 mcp = FastMCP("DraCor API v1")
@@ -16,7 +19,7 @@ mcp = FastMCP("DraCor API v1")
 def api_request(endpoint: str, params: Optional[Dict] = None) -> Any:
     """Make a request to the DraCor API v1."""
     url = f"{DRACOR_API_BASE_URL}/{endpoint}"
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
     response.raise_for_status()
     return response.json()
 
@@ -102,7 +105,7 @@ def get_spoken_text(corpus_name: str, play_name: str) -> Dict:
         # For now, we won't use optional query parameters since they're causing issues
         # We can implement this differently once we better understand the FastMCP API
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/spoken-text"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         text = response.text
         
@@ -125,7 +128,7 @@ def get_stage_directions(corpus_name: str, play_name: str) -> Dict:
     try:
         # Note: This endpoint returns plain text, not JSON
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/stage-directions"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         text = response.text
         
@@ -139,7 +142,7 @@ def get_network_data(corpus_name: str, play_name: str) -> Dict:
     try:
         # Note: This endpoint returns CSV, not JSON
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/networkdata/csv"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         csv_data = response.text
         
@@ -152,7 +155,7 @@ def get_relations(corpus_name: str, play_name: str) -> Dict:
     """Get character relation data for a play."""
     try:
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/relations"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         relations = response.json()
         
@@ -167,12 +170,12 @@ def get_full_text(corpus_name: str, play_name: str) -> Dict:
         # The DraCor API doesn't have a direct plain text endpoint
         # Use the spoken-text endpoint which returns plain text of all dialogue
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/spoken-text"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        
+
         # Get stage directions too
         stage_url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/stage-directions"
-        stage_response = requests.get(stage_url)
+        stage_response = requests.get(stage_url, timeout=DEFAULT_TIMEOUT)
         stage_response.raise_for_status()
         
         # Combine both for a more complete text representation
@@ -187,7 +190,7 @@ def get_tei_text(corpus_name: str, play_name: str) -> Dict:
     """Get the full TEI XML text of a play."""
     try:
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/tei"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         tei_text = response.text
         
@@ -452,10 +455,10 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
         
         # Get network data in CSV format
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/networkdata/csv"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         csv_data = response.text
-        
+
         # Parse CSV data to extract relations
         relations = []
         lines = csv_data.strip().split('\n')
@@ -491,7 +494,7 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
         # Try to get relations data if available
         try:
             relations_url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/relations/csv"
-            relations_response = requests.get(relations_url)
+            relations_response = requests.get(relations_url, timeout=DEFAULT_TIMEOUT)
             formal_relations = []
             
             if relations_response.status_code == 200:
