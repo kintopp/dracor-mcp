@@ -3,6 +3,8 @@
 from typing import Dict, List, Optional, Any, Union
 import requests
 import re
+import csv
+import io
 from mcp.server.fastmcp import FastMCP
 import os
 
@@ -502,18 +504,20 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
         response.raise_for_status()
         csv_data = response.text
 
-        # Parse CSV data to extract relations
+        # Parse CSV data to extract relations using proper CSV parser
         relations = []
-        lines = csv_data.strip().split('\n')
-        if len(lines) > 1:  # Skip header
-            headers = lines[0].split(',')
-            for line in lines[1:]:
-                parts = line.split(',')
-                if len(parts) >= 4:
-                    source = parts[0].strip('"')
-                    target = parts[2].strip('"')
-                    weight = int(parts[3]) if parts[3].isdigit() else 0
-                    
+        csv_reader = csv.reader(io.StringIO(csv_data))
+        rows = list(csv_reader)
+        if len(rows) > 1:  # Skip header
+            for row in rows[1:]:
+                if len(row) >= 4:
+                    source = row[0]
+                    target = row[2]
+                    try:
+                        weight = int(row[3])
+                    except ValueError:
+                        weight = 0
+
                     # Find character names from IDs
                     source_name = None
                     target_name = None
@@ -522,7 +526,7 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
                             source_name = char.get("name")
                         if char.get("id") == target:
                             target_name = char.get("name")
-                    
+
                     relations.append({
                         "source": source_name or source,
                         "source_id": source,
@@ -541,15 +545,15 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
             formal_relations = []
             
             if relations_response.status_code == 200:
-                rel_lines = relations_response.text.strip().split('\n')
-                if len(rel_lines) > 1:  # Skip header
-                    for line in rel_lines[1:]:
-                        parts = line.split(',')
-                        if len(parts) >= 4:
-                            source = parts[0].strip('"')
-                            target = parts[2].strip('"')
-                            relation_type = parts[3].strip('"')
-                            
+                csv_reader = csv.reader(io.StringIO(relations_response.text))
+                rel_rows = list(csv_reader)
+                if len(rel_rows) > 1:  # Skip header
+                    for row in rel_rows[1:]:
+                        if len(row) >= 4:
+                            source = row[0]
+                            target = row[2]
+                            relation_type = row[3]
+
                             # Find character names from IDs
                             source_name = None
                             target_name = None
@@ -558,7 +562,7 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
                                     source_name = char.get("name")
                                 if char.get("id") == target:
                                     target_name = char.get("name")
-                            
+
                             formal_relations.append({
                                 "source": source_name or source,
                                 "target": target_name or target,
