@@ -330,7 +330,7 @@ def search_plays(
                         else:
                             # If we can't get characters, we assume it's not a match
                             is_match = False
-                    except:
+                    except Exception:
                         # If error occurs, we assume it's not a match
                         is_match = False
                 
@@ -355,7 +355,7 @@ def search_plays(
                                     is_match = False
                                 elif gender_filter == "balanced" and (female_ratio < 0.4 or female_ratio > 0.6):
                                     is_match = False
-                    except:
+                    except Exception:
                         # If error occurs, we keep it as a match
                         pass
                 
@@ -385,7 +385,7 @@ def search_plays(
                                     "characters": len(play_info.get("characters", [])),
                                     "link": f"https://dracor.org/{corpus_name}/{play_name}"
                                 })
-                        except:
+                        except Exception:
                             pass
         
         return {
@@ -521,7 +521,7 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
                                 "target": target_name or target,
                                 "type": relation_type
                             })
-        except:
+        except Exception:
             formal_relations = []
         
         # Get metrics
@@ -648,7 +648,7 @@ def find_character_across_plays(character_name: str) -> Dict:
                                 "numOfSpeechActs": character.get("numOfSpeechActs"),
                                 "numOfWords": character.get("numOfWords")
                             })
-                except:
+                except Exception:
                     continue
         
         return {"matches": matches}
