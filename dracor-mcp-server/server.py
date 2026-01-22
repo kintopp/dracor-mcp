@@ -13,6 +13,7 @@ import csv
 import io
 import xml.etree.ElementTree as ET
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 import os
 
 # Base API URL for DraCor v1
@@ -38,10 +39,17 @@ def validate_name(name: str, param_name: str = "name") -> str:
     return name
 
 
+# Configure transport security for Railway deployment
+# Disable DNS rebinding protection to allow Railway's proxy to forward requests
+transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=False,
+)
+
 # Create the FastMCP server instance with HTTP configuration
 mcp = FastMCP(
     "DraCor API v1",
     stateless_http=True,  # Enable stateless HTTP mode for scalable deployment
+    transport_security=transport_security,
 )
 
 
