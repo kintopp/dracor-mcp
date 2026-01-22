@@ -34,10 +34,24 @@ def create_http_app():
     """Create the HTTP app for MCP streaming.
 
     The health check is defined in server.py using @mcp.custom_route.
-    We just need to return the streamable HTTP app.
+    We wrap the app with CORS middleware for cross-origin requests.
     """
     from server import mcp
-    return mcp.streamable_http_app()
+    from starlette.middleware import Middleware
+    from starlette.middleware.cors import CORSMiddleware
+
+    app = mcp.streamable_http_app()
+
+    # Add CORS middleware to allow cross-origin requests
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    return app
 
 
 def run_stdio():
