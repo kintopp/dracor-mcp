@@ -14,10 +14,13 @@ Environment Variables:
 
 import os
 import logging
-from dotenv import load_dotenv
 
-# Load environment variables from .env file if present
-load_dotenv()
+# Load environment variables from .env file if present (optional, for local dev)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, Railway sets env vars directly
 
 # Configure logging
 logging.basicConfig(
