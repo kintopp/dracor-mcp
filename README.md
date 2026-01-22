@@ -4,6 +4,7 @@ A Model Context Protocol (MCP) server for interacting with the Drama Corpora Pro
 
 ## Recent Changes
 
+- **MCP SDK upgrade**: Upgraded to v1.25.0 for Claude Desktop compatibility (protocol version 2025-06-18)
 - **Request timeouts**: All HTTP requests now have a 30-second timeout to prevent hangs
 - **Input validation**: Corpus and play names are validated to prevent path traversal attacks
 - **Improved CSV parsing**: Uses Python's `csv` module for correct handling of quoted fields
@@ -91,9 +92,32 @@ mcp dev dracor_mcp_fastmcp.py
 
 This will launch the MCP Inspector where you can test your tools and resources interactively.
 
-### Claude Configuration
+### Claude Desktop Configuration
 
-You can also directly configure Claude to use the DraCor MCP server by adding the following to your Claude configuration file:
+After installing the server with `mcp install`, Claude Desktop will be configured automatically. However, if you encounter "server disconnected" errors, you may need to manually configure the server to use your project's virtual environment directly.
+
+**Recommended configuration** (uses the project's venv with the correct MCP version):
+
+Edit your Claude Desktop config file:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "DraCor API v1": {
+      "command": "/path/to/dracor-mcp/.venv/bin/python",
+      "args": [
+        "/path/to/dracor-mcp/dracor_mcp_fastmcp.py"
+      ]
+    }
+  }
+}
+```
+
+Replace `/path/to/dracor-mcp/` with the actual path to your dracor-mcp directory.
+
+**Alternative configuration** (uses `uv run` to create an isolated environment):
 
 ```json
 {
@@ -122,14 +146,16 @@ You can also directly configure Claude to use the DraCor MCP server by adding th
 }
 ```
 
-Replace `/path/to/dracor-mcp/` with the actual path to your dracor-mcp directory. This configuration uses `uv run` to execute the MCP server with the necessary dependencies without requiring a prior installation.
+> **Note**: The `uv run --with` approach creates a temporary isolated environment each time. This may use a cached or older MCP version that doesn't support the protocol version required by Claude Desktop. If you encounter connection issues, use the recommended venv-based configuration above.
 
-If you want to use a different server, e.g. the staging server, change it in the environment variable `DRACOR_API_BASE_UR` in the configuration file:
+**Using a different API server** (e.g., staging):
+
+Add an `env` block to your configuration:
 
 ```json
 "env": {
-  "DRACOR_API_BASE_URL": "https://staging.dracor.org/api/v1" 
-  }
+  "DRACOR_API_BASE_URL": "https://staging.dracor.org/api/v1"
+}
 ```
 
 ### Docker (optional)
@@ -341,6 +367,38 @@ If you encounter issues:
 1. Ensure you're using Python 3.10 or higher
 2. Try running in development mode to debug: `mcp dev dracor_mcp_fastmcp.py`
 3. Check the DraCor API status at https://dracor.org/doc/api
+
+### "Server disconnected" error in Claude Desktop
+
+This usually indicates a protocol version mismatch between the MCP SDK and Claude Desktop.
+
+**Solution**: Upgrade the MCP SDK and use the venv-based configuration:
+
+```bash
+# Activate your venv
+source .venv/bin/activate
+
+# Upgrade MCP to the latest version
+uv pip install --upgrade "mcp[cli]"
+
+# Clear Python bytecode cache (important!)
+find .venv/lib -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
+find .venv/lib -name "*.pyc" -delete 2>/dev/null
+
+# Update uv.lock to capture the upgrade
+uv lock --upgrade-package mcp
+```
+
+Then update your Claude Desktop config to use the venv's Python directly (see [Claude Desktop Configuration](#claude-desktop-configuration) above).
+
+You can verify the server works by checking the protocol version:
+
+```bash
+source .venv/bin/activate
+python -c "from importlib.metadata import version; print('MCP version:', version('mcp'))"
+```
+
+The MCP version should be 1.25.0 or higher for compatibility with current Claude Desktop.
 
 ## Prompt to use with MCP
 
