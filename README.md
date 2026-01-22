@@ -2,6 +2,16 @@
 
 A Model Context Protocol (MCP) server for interacting with the Drama Corpora Project (DraCor) API. This MCP server enables you to seamlessly analyze dramatic texts and their character networks through Claude or other LLMs.
 
+## Recent Changes
+
+- **Request timeouts**: All HTTP requests now have a 30-second timeout to prevent hangs
+- **Input validation**: Corpus and play names are validated to prevent path traversal attacks
+- **Improved CSV parsing**: Uses Python's `csv` module for correct handling of quoted fields
+- **Improved XML/TEI parsing**: Uses `ElementTree` for reliable namespace-aware parsing
+- **Better exception handling**: Replaced bare `except:` with `except Exception:`
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+
 ## Overview
 
 This project implements an MCP server using the official Model Context Protocol Python SDK that provides access to the DraCor API v1. It allows Claude and other LLMs to interact with dramatic text corpora, analyze character networks, retrieve play information, and generate insights about dramatic works across different languages and periods.
