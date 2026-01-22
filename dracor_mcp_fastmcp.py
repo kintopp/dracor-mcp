@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Optional, Any, Union
 import requests
+import re
 from mcp.server.fastmcp import FastMCP
 import os
 
@@ -11,6 +12,19 @@ DRACOR_API_BASE_URL = str(os.environ.get("DRACOR_API_BASE_URL", "https://dracor.
 
 # Default timeout for HTTP requests (in seconds)
 DEFAULT_TIMEOUT = 30
+
+# Validation pattern for corpus/play names (alphanumeric, hyphens, underscores only)
+VALID_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+
+def validate_name(name: str, param_name: str = "name") -> str:
+    """Validate corpus/play names contain only safe characters."""
+    if not name:
+        raise ValueError(f"{param_name} cannot be empty")
+    if not VALID_NAME_PATTERN.match(name):
+        raise ValueError(f"Invalid {param_name}: only alphanumeric, hyphens, underscores allowed")
+    return name
+
 
 # Create the FastMCP server instance
 mcp = FastMCP("DraCor API v1")
@@ -48,6 +62,7 @@ def get_corpora() -> Dict:
 def get_corpus(corpus_name: str) -> Dict:
     """Information about a specific corpus."""
     try:
+        validate_name(corpus_name, "corpus_name")
         corpus = api_request(f"corpora/{corpus_name}")
         return corpus
     except Exception as e:
@@ -57,6 +72,7 @@ def get_corpus(corpus_name: str) -> Dict:
 def get_corpus_metadata(corpus_name: str) -> Dict:
     """Get metadata for all plays in a corpus."""
     try:
+        validate_name(corpus_name, "corpus_name")
         metadata = api_request(f"corpora/{corpus_name}/metadata")
         return {"metadata": metadata}
     except Exception as e:
@@ -66,6 +82,7 @@ def get_corpus_metadata(corpus_name: str) -> Dict:
 def get_plays(corpus_name: str) -> Dict:
     """List of plays in a specific corpus."""
     try:
+        validate_name(corpus_name, "corpus_name")
         corpus = api_request(f"corpora/{corpus_name}")
         return {"plays": corpus.get("plays", [])}
     except Exception as e:
@@ -75,6 +92,8 @@ def get_plays(corpus_name: str) -> Dict:
 def get_play(corpus_name: str, play_name: str) -> Dict:
     """Information about a specific play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         play = api_request(f"corpora/{corpus_name}/plays/{play_name}")
         return play
     except Exception as e:
@@ -84,6 +103,8 @@ def get_play(corpus_name: str, play_name: str) -> Dict:
 def get_play_metrics(corpus_name: str, play_name: str) -> Dict:
     """Get network metrics for a specific play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         metrics = api_request(f"corpora/{corpus_name}/plays/{play_name}/metrics")
         return metrics
     except Exception as e:
@@ -93,6 +114,8 @@ def get_play_metrics(corpus_name: str, play_name: str) -> Dict:
 def get_characters(corpus_name: str, play_name: str) -> Dict:
     """List of characters in a specific play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         characters = api_request(f"corpora/{corpus_name}/plays/{play_name}/characters")
         return {"characters": characters}
     except Exception as e:
@@ -102,6 +125,8 @@ def get_characters(corpus_name: str, play_name: str) -> Dict:
 def get_spoken_text(corpus_name: str, play_name: str) -> Dict:
     """Get the spoken text for a play, with optional filters (gender, relation, role) as query parameters."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         # For now, we won't use optional query parameters since they're causing issues
         # We can implement this differently once we better understand the FastMCP API
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/spoken-text"
@@ -117,6 +142,8 @@ def get_spoken_text(corpus_name: str, play_name: str) -> Dict:
 def get_spoken_text_by_character(corpus_name: str, play_name: str) -> Dict:
     """Get spoken text for each character in a play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         text_by_character = api_request(f"corpora/{corpus_name}/plays/{play_name}/spoken-text-by-character")
         return {"text_by_character": text_by_character}
     except Exception as e:
@@ -126,6 +153,8 @@ def get_spoken_text_by_character(corpus_name: str, play_name: str) -> Dict:
 def get_stage_directions(corpus_name: str, play_name: str) -> Dict:
     """Get all stage directions of a play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         # Note: This endpoint returns plain text, not JSON
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/stage-directions"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
@@ -140,6 +169,8 @@ def get_stage_directions(corpus_name: str, play_name: str) -> Dict:
 def get_network_data(corpus_name: str, play_name: str) -> Dict:
     """Get network data of a play in CSV format."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         # Note: This endpoint returns CSV, not JSON
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/networkdata/csv"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
@@ -154,6 +185,8 @@ def get_network_data(corpus_name: str, play_name: str) -> Dict:
 def get_relations(corpus_name: str, play_name: str) -> Dict:
     """Get character relation data for a play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/relations"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
@@ -167,6 +200,8 @@ def get_relations(corpus_name: str, play_name: str) -> Dict:
 def get_full_text(corpus_name: str, play_name: str) -> Dict:
     """Get the full text of a play in plain text format."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         # The DraCor API doesn't have a direct plain text endpoint
         # Use the spoken-text endpoint which returns plain text of all dialogue
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/spoken-text"
@@ -189,6 +224,8 @@ def get_full_text(corpus_name: str, play_name: str) -> Dict:
 def get_tei_text(corpus_name: str, play_name: str) -> Dict:
     """Get the full TEI XML text of a play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/tei"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
@@ -408,13 +445,17 @@ def search_plays(
 
 @mcp.tool()
 def compare_plays(
-    corpus_name1: str, 
-    play_name1: str, 
-    corpus_name2: str, 
+    corpus_name1: str,
+    play_name1: str,
+    corpus_name2: str,
     play_name2: str
 ) -> Dict:
     """Compare two plays in terms of metrics and structure."""
     try:
+        validate_name(corpus_name1, "corpus_name1")
+        validate_name(play_name1, "play_name1")
+        validate_name(corpus_name2, "corpus_name2")
+        validate_name(play_name2, "play_name2")
         play1 = api_request(f"corpora/{corpus_name1}/plays/{play_name1}")
         play2 = api_request(f"corpora/{corpus_name2}/plays/{play_name2}")
         
@@ -447,6 +488,8 @@ def compare_plays(
 def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
     """Analyze the character relationships in a play."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         # Get play data
         play = api_request(f"corpora/{corpus_name}/plays/{play_name}")
         
@@ -547,6 +590,8 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
 def analyze_play_structure(corpus_name: str, play_name: str) -> Dict:
     """Analyze the structure of a play including acts, scenes, and metrics."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         play = api_request(f"corpora/{corpus_name}/plays/{play_name}")
         metrics = api_request(f"corpora/{corpus_name}/plays/{play_name}/metrics")
         
@@ -659,6 +704,8 @@ def find_character_across_plays(character_name: str) -> Dict:
 def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
     """Analyze the full text of a play, including dialogue and stage directions."""
     try:
+        validate_name(corpus_name, "corpus_name")
+        validate_name(play_name, "play_name")
         # Get the TEI XML as primary source
         tei_result = get_tei_text(corpus_name, play_name)
         if "error" in tei_result:
