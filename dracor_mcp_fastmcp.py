@@ -5,6 +5,7 @@ import requests
 import re
 import csv
 import io
+import xml.etree.ElementTree as ET
 from mcp.server.fastmcp import FastMCP
 import os
 
@@ -17,6 +18,9 @@ DEFAULT_TIMEOUT = 30
 
 # Validation pattern for corpus/play names (alphanumeric, hyphens, underscores only)
 VALID_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+# TEI XML namespace
+TEI_NS = {"tei": "http://www.tei-c.org/ns/1.0"}
 
 
 def validate_name(name: str, param_name: str = "name") -> str:
@@ -722,35 +726,42 @@ def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
         else:
             has_tei = True
             tei_text = tei_result["tei_text"]
-            
-            # Simple XML parsing to extract basic structure
-            # In a production environment, use a proper XML parser library
-            import re
-            
-            # Extract title
-            title_match = re.search(r'<title[^>]*>([^<]+)</title>', tei_text)
-            title = title_match.group(1) if title_match else "Unknown"
-            
-            # Extract author(s)
-            author_matches = re.findall(r'<author[^>]*>([^<]+)</author>', tei_text)
-            authors = author_matches if author_matches else ["Unknown"]
-            
-            # Extract acts
-            acts = re.findall(r'<div type="act"[^>]*>(.*?)</div>', tei_text, re.DOTALL)
-            act_count = len(acts)
-            
-            # Extract scenes
-            scenes = re.findall(r'<div type="scene"[^>]*>(.*?)</div>', tei_text, re.DOTALL)
-            scene_count = len(scenes)
-            
-            # Extract speeches
-            speeches = re.findall(r'<sp[^>]*>(.*?)</sp>', tei_text, re.DOTALL)
-            speech_count = len(speeches)
-            
-            # Extract stage directions
-            stage_directions = re.findall(r'<stage[^>]*>(.*?)</stage>', tei_text, re.DOTALL)
-            stage_direction_count = len(stage_directions)
-            
+
+            # Parse TEI XML with proper XML parser
+            try:
+                root = ET.fromstring(tei_text)
+
+                # Extract title (try with namespace first, then without)
+                title_elem = root.find('.//tei:titleStmt/tei:title', TEI_NS)
+                if title_elem is None:
+                    title_elem = root.find('.//{http://www.tei-c.org/ns/1.0}title')
+                title = title_elem.text.strip() if title_elem is not None and title_elem.text else "Unknown"
+
+                # Extract authors
+                author_elems = root.findall('.//tei:titleStmt/tei:author', TEI_NS)
+                if not author_elems:
+                    author_elems = root.findall('.//{http://www.tei-c.org/ns/1.0}author')
+                authors = [a.text.strip() for a in author_elems if a.text] or ["Unknown"]
+
+                # Extract structural elements
+                acts = root.findall('.//{http://www.tei-c.org/ns/1.0}div[@type="act"]')
+                scenes = root.findall('.//{http://www.tei-c.org/ns/1.0}div[@type="scene"]')
+                speeches = root.findall('.//{http://www.tei-c.org/ns/1.0}sp')
+                stage_directions = root.findall('.//{http://www.tei-c.org/ns/1.0}stage')
+
+                act_count = len(acts)
+                scene_count = len(scenes)
+                speech_count = len(speeches)
+                stage_direction_count = len(stage_directions)
+
+            except ET.ParseError:
+                # Fallback if XML parsing fails
+                title = "Unknown"
+                authors = ["Unknown"]
+                act_count = scene_count = speech_count = stage_direction_count = 0
+                speeches = []
+                stage_directions = []
+
             # Also get the plain text for easier processing
             full_text = get_full_text(corpus_name, play_name)
             text_content = full_text.get("text", "")
@@ -783,8 +794,8 @@ def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
                     "stage_directions": stage_direction_count
                 },
                 "text_sample": {
-                    "first_speech": speeches[0] if speeches else "",
-                    "first_stage_direction": stage_directions[0] if stage_directions else ""
+                    "first_speech": ET.tostring(speeches[0], encoding='unicode', method='text').strip() if speeches else "",
+                    "first_stage_direction": ET.tostring(stage_directions[0], encoding='unicode', method='text').strip() if stage_directions else ""
                 }
             }
         
