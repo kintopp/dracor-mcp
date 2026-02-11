@@ -39,6 +39,19 @@ def validate_name(name: str, param_name: str = "name") -> str:
     return name
 
 
+# Validation pattern for Wikidata IDs (Q followed by digits)
+VALID_WIKIDATA_PATTERN = re.compile(r'^Q\d+$')
+
+
+def validate_wikidata_id(wikidata_id: str) -> str:
+    """Validate Wikidata ID format (Q followed by digits, e.g. Q42)."""
+    if not wikidata_id:
+        raise ValueError("wikidata_id cannot be empty")
+    if not VALID_WIKIDATA_PATTERN.match(wikidata_id):
+        raise ValueError("Invalid wikidata_id: must be Q followed by digits (e.g., Q42)")
+    return wikidata_id
+
+
 # Configure transport security for Railway deployment
 # Disable DNS rebinding protection to allow Railway's proxy to forward requests
 transport_security = TransportSecuritySettings(
@@ -275,6 +288,7 @@ def get_tei_text(corpus_name: str, play_name: str) -> Dict:
 def get_plays_with_character(wikidata_id: str) -> Dict:
     """List plays having a character identified by Wikidata ID."""
     try:
+        validate_wikidata_id(wikidata_id)
         plays = api_request(f"character/{wikidata_id}")
         return {"plays": plays}
     except Exception as e:
@@ -322,16 +336,19 @@ def search_plays(
         else:
             target_corpora = all_corpora
 
+        # Preserve original filter value before the loop overwrites it
+        corpus_name_filter = corpus_name
+
         # Initialize results
         results = []
         detailed_results = []
 
         # For each corpus, search for plays
         for corpus in target_corpora:
-            corpus_name = corpus.get("name")
+            current_corpus_name = corpus.get("name")
 
             # Get all plays from this corpus
-            plays_result = get_plays(corpus_name)
+            plays_result = get_plays(current_corpus_name)
             if "error" in plays_result:
                 continue
 
@@ -376,20 +393,21 @@ def search_plays(
 
                 # Apply year range filter if specified
                 if (year_from or year_to) and is_match:
-                    play_year = play.get("yearNormalized") or play.get("yearWritten") or play.get("yearPrinted") or 0
+                    play_year = play.get("yearNormalized") or play.get("yearWritten") or play.get("yearPrinted")
 
-                    if year_from and play_year < year_from:
-                        is_match = False
+                    if play_year is not None:
+                        if year_from and play_year < year_from:
+                            is_match = False
 
-                    if year_to and play_year > year_to:
-                        is_match = False
+                        if year_to and play_year > year_to:
+                            is_match = False
 
                 # If character name is specified, need to check character list
                 if character_name and is_match:
                     try:
                         # Get characters for this play
                         play_name = play.get("name")
-                        characters_result = get_characters(corpus_name, play_name)
+                        characters_result = get_characters(current_corpus_name, play_name)
 
                         if "error" not in characters_result:
                             character_found = False
@@ -412,7 +430,7 @@ def search_plays(
                     try:
                         # Get characters for this play
                         play_name = play.get("name")
-                        characters_result = get_characters(corpus_name, play_name)
+                        characters_result = get_characters(current_corpus_name, play_name)
 
                         if "error" not in characters_result:
                             male_count = sum(1 for c in characters_result.get("characters", []) if c.get("gender") == "MALE")
@@ -436,7 +454,7 @@ def search_plays(
                 if is_match:
                     # Add basic info to results
                     results.append({
-                        "corpus": corpus_name,
+                        "corpus": current_corpus_name,
                         "play": play
                     })
 
@@ -445,18 +463,18 @@ def search_plays(
                         try:
                             play_name = play.get("name")
                             # Get more details
-                            play_info = get_play(corpus_name, play_name)
+                            play_info = get_play(current_corpus_name, play_name)
 
                             if "error" not in play_info:
                                 detailed_results.append({
-                                    "corpus": corpus_name,
+                                    "corpus": current_corpus_name,
                                     "play_name": play_name,
                                     "title": play.get("title"),
                                     "author": play.get("authors", [{}])[0].get("name") if play.get("authors") else "Unknown",
                                     "year": play.get("yearNormalized"),
                                     "language": play.get("originalLanguage"),
                                     "characters": len(play_info.get("characters", [])),
-                                    "link": f"https://dracor.org/{corpus_name}/{play_name}"
+                                    "link": f"https://dracor.org/{current_corpus_name}/{play_name}"
                                 })
                         except Exception:
                             pass
@@ -467,7 +485,7 @@ def search_plays(
             "top_results": detailed_results,
             "filters_applied": {
                 "query": query,
-                "corpus_name": corpus_name,
+                "corpus_name": corpus_name_filter,
                 "character_name": character_name,
                 "country": country,
                 "language": language,
@@ -538,6 +556,9 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
         response.raise_for_status()
         csv_data = response.text
 
+        # Build character ID-to-name lookup for efficient resolution
+        char_lookup = {char.get("id"): char.get("name") for char in characters}
+
         # Parse CSV data to extract relations using proper CSV parser
         relations = []
         csv_reader = csv.reader(io.StringIO(csv_data))
@@ -552,19 +573,10 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
                     except ValueError:
                         weight = 0
 
-                    # Find character names from IDs
-                    source_name = None
-                    target_name = None
-                    for char in characters:
-                        if char.get("id") == source:
-                            source_name = char.get("name")
-                        if char.get("id") == target:
-                            target_name = char.get("name")
-
                     relations.append({
-                        "source": source_name or source,
+                        "source": char_lookup.get(source, source),
                         "source_id": source,
-                        "target": target_name or target,
+                        "target": char_lookup.get(target, target),
                         "target_id": target,
                         "weight": weight
                     })
@@ -588,18 +600,9 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
                             target = row[2]
                             relation_type = row[3]
 
-                            # Find character names from IDs
-                            source_name = None
-                            target_name = None
-                            for char in characters:
-                                if char.get("id") == source:
-                                    source_name = char.get("name")
-                                if char.get("id") == target:
-                                    target_name = char.get("name")
-
                             formal_relations.append({
-                                "source": source_name or source,
-                                "target": target_name or target,
+                                "source": char_lookup.get(source, source),
+                                "target": char_lookup.get(target, target),
                                 "type": relation_type
                             })
         except Exception:
@@ -807,7 +810,7 @@ def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
             return {"error": characters["error"]}
 
         result = {
-            "play": play_info.get("play", {}),
+            "play": play_info,
             "characters": characters.get("characters", []),
             "text": text_content,
         }
@@ -830,11 +833,12 @@ def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
             }
 
         # Add basic text analysis in either case
+        dialogue_count = text_content.count("\n\nDIALOGUE:")
+        direction_count = text_content.count("\n\nSTAGE DIRECTIONS:")
         result["analysis"] = {
             "text_length": len(text_content),
             "character_count": len(characters.get("characters", [])),
-            "dialogue_to_direction_ratio": text_content.count("\n\nDIALOGUE:") /
-                                          (text_content.count("\n\nSTAGE DIRECTIONS:") or 1)
+            "dialogue_to_direction_ratio": dialogue_count / direction_count if direction_count > 0 else None
         }
 
         return result
