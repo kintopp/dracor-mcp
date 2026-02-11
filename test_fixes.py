@@ -32,7 +32,7 @@ passed = 0
 failed = 0
 
 
-def test(name, condition, detail=""):
+def test(name: str, condition: bool, detail: str = "") -> None:
     global passed, failed
     if condition:
         passed += 1
@@ -126,13 +126,12 @@ else:
 # ===== Fix #5: O(n²) → O(n) character lookup ==============================
 print("\n--- Fix #5: Character relation lookup uses dict ---")
 
-result = analyze_character_relations("shake", "hamlet")
-if "error" in result:
-    test("analyze_character_relations succeeds", False, result["error"])
+relations_result = analyze_character_relations("shake", "hamlet")
+if "error" in relations_result:
+    test("analyze_character_relations succeeds", False, relations_result["error"])
 else:
     test("analyze_character_relations succeeds", True)
-    # Check that character names were resolved (not just IDs)
-    top = result.get("strongestRelations", [])
+    top = relations_result.get("strongestRelations", [])
     if top:
         has_name = any(not r["source"].startswith("#") for r in top)
         test("character names resolved in relations", has_name,
@@ -144,12 +143,12 @@ else:
 # ===== Fix #6: Division by zero in analyze_full_text =======================
 print("\n--- Fix #6: dialogue_to_direction_ratio ---")
 
-if "error" not in result:
-    # Re-use the analyze_full_text result from Fix #3 test
-    aft_result = analyze_full_text("shake", "hamlet")
+aft_result = analyze_full_text("shake", "hamlet")
+if "error" in aft_result:
+    test("analyze_full_text for ratio test", False, aft_result["error"])
+else:
     analysis = aft_result.get("analysis", {})
     ratio = analysis.get("dialogue_to_direction_ratio")
-    # ratio should be None or a float, never a misleading fallback
     test("ratio is None or float",
          ratio is None or isinstance(ratio, (int, float)),
          f"ratio={ratio!r} type={type(ratio)}")

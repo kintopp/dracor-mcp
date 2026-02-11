@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-DraCor MCP Server - Core server implementation.
+DraCor MCP Server - HTTP streaming server implementation.
 
 This module contains the MCP server definition with all resources, tools, and prompts
-for interacting with the Drama Corpora Project (DraCor) API v1.
+for interacting with the Drama Corpora Project (DraCor) API v1.  It is configured for
+stateless HTTP deployment (e.g. Railway) with DNS rebinding protection disabled.
 """
 
-from typing import Dict, List, Optional, Any, Union
+from typing import Any, Dict, Optional
 import requests
 import re
 import csv
@@ -17,7 +18,6 @@ from mcp.server.transport_security import TransportSecuritySettings
 import os
 
 # Base API URL for DraCor v1
-# Set the Base URL in the environment variable DRACOR_API_BASE_URL
 DRACOR_API_BASE_URL = str(os.environ.get("DRACOR_API_BASE_URL", "https://dracor.org/api/v1"))
 
 # Default timeout for HTTP requests (in seconds)
@@ -52,8 +52,15 @@ def validate_wikidata_id(wikidata_id: str) -> str:
     return wikidata_id
 
 
+def get_first_author(play_data: Dict, default: str = None) -> Optional[str]:
+    """Extract the first author name from play data, or return a default."""
+    authors = play_data.get("authors")
+    if authors:
+        return authors[0].get("name", default)
+    return default
+
+
 # Configure transport security for Railway deployment
-# Disable DNS rebinding protection to allow Railway's proxy to forward requests
 transport_security = TransportSecuritySettings(
     enable_dns_rebinding_protection=False,
 )
@@ -61,7 +68,7 @@ transport_security = TransportSecuritySettings(
 # Create the FastMCP server instance with HTTP configuration
 mcp = FastMCP(
     "DraCor API v1",
-    stateless_http=True,  # Enable stateless HTTP mode for scalable deployment
+    stateless_http=True,
     transport_security=transport_security,
 )
 
@@ -78,7 +85,6 @@ async def health_check(request):
     })
 
 
-# Helper function to make API requests
 def api_request(endpoint: str, params: Optional[Dict] = None) -> Any:
     """Make a request to the DraCor API v1."""
     url = f"{DRACOR_API_BASE_URL}/{endpoint}"
@@ -86,13 +92,16 @@ def api_request(endpoint: str, params: Optional[Dict] = None) -> Any:
     response.raise_for_status()
     return response.json()
 
-# Resource implementations using decorators
+
+# ---------------------------------------------------------------------------
+# Resource implementations
+# ---------------------------------------------------------------------------
+
 @mcp.resource("info://")
 def get_api_info() -> Dict:
     """Get API information and version details."""
     try:
-        info = api_request("info")
-        return info
+        return api_request("info")
     except Exception as e:
         return {"error": str(e)}
 
@@ -100,10 +109,7 @@ def get_api_info() -> Dict:
 def get_corpora() -> Dict:
     """List of all available corpora (collections of plays)."""
     try:
-        # The include parameter needs to be handled differently as it's not in the URI
-        # We'll handle it as a query parameter in the implementation
-        corpora = api_request("corpora")
-        return {"corpora": corpora}
+        return {"corpora": api_request("corpora")}
     except Exception as e:
         return {"error": str(e)}
 
@@ -112,8 +118,7 @@ def get_corpus(corpus_name: str) -> Dict:
     """Information about a specific corpus."""
     try:
         validate_name(corpus_name, "corpus_name")
-        corpus = api_request(f"corpora/{corpus_name}")
-        return corpus
+        return api_request(f"corpora/{corpus_name}")
     except Exception as e:
         return {"error": str(e)}
 
@@ -122,8 +127,7 @@ def get_corpus_metadata(corpus_name: str) -> Dict:
     """Get metadata for all plays in a corpus."""
     try:
         validate_name(corpus_name, "corpus_name")
-        metadata = api_request(f"corpora/{corpus_name}/metadata")
-        return {"metadata": metadata}
+        return {"metadata": api_request(f"corpora/{corpus_name}/metadata")}
     except Exception as e:
         return {"error": str(e)}
 
@@ -132,8 +136,8 @@ def get_plays(corpus_name: str) -> Dict:
     """List of plays in a specific corpus."""
     try:
         validate_name(corpus_name, "corpus_name")
-        corpus = api_request(f"corpora/{corpus_name}")
-        return {"plays": corpus.get("plays", [])}
+        corpus_data = api_request(f"corpora/{corpus_name}")
+        return {"plays": corpus_data.get("plays", [])}
     except Exception as e:
         return {"error": str(e)}
 
@@ -143,8 +147,7 @@ def get_play(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        play = api_request(f"corpora/{corpus_name}/plays/{play_name}")
-        return play
+        return api_request(f"corpora/{corpus_name}/plays/{play_name}")
     except Exception as e:
         return {"error": str(e)}
 
@@ -154,8 +157,7 @@ def get_play_metrics(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        metrics = api_request(f"corpora/{corpus_name}/plays/{play_name}/metrics")
-        return metrics
+        return api_request(f"corpora/{corpus_name}/plays/{play_name}/metrics")
     except Exception as e:
         return {"error": str(e)}
 
@@ -165,25 +167,20 @@ def get_characters(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        characters = api_request(f"corpora/{corpus_name}/plays/{play_name}/characters")
-        return {"characters": characters}
+        return {"characters": api_request(f"corpora/{corpus_name}/plays/{play_name}/characters")}
     except Exception as e:
         return {"error": str(e)}
 
 @mcp.resource("spoken_text://{corpus_name}/{play_name}")
 def get_spoken_text(corpus_name: str, play_name: str) -> Dict:
-    """Get the spoken text for a play, with optional filters (gender, relation, role) as query parameters."""
+    """Get the spoken text for a play."""
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        # For now, we won't use optional query parameters since they're causing issues
-        # We can implement this differently once we better understand the FastMCP API
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/spoken-text"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        text = response.text
-
-        return {"text": text}
+        return {"text": response.text}
     except Exception as e:
         return {"error": str(e)}
 
@@ -193,24 +190,20 @@ def get_spoken_text_by_character(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        text_by_character = api_request(f"corpora/{corpus_name}/plays/{play_name}/spoken-text-by-character")
-        return {"text_by_character": text_by_character}
+        return {"text_by_character": api_request(f"corpora/{corpus_name}/plays/{play_name}/spoken-text-by-character")}
     except Exception as e:
         return {"error": str(e)}
 
 @mcp.resource("stage_directions://{corpus_name}/{play_name}")
 def get_stage_directions(corpus_name: str, play_name: str) -> Dict:
-    """Get all stage directions of a play."""
+    """Get all stage directions of a play (plain text)."""
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        # Note: This endpoint returns plain text, not JSON
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/stage-directions"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        text = response.text
-
-        return {"text": text}
+        return {"text": response.text}
     except Exception as e:
         return {"error": str(e)}
 
@@ -220,13 +213,10 @@ def get_network_data(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        # Note: This endpoint returns CSV, not JSON
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/networkdata/csv"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        csv_data = response.text
-
-        return {"csv_data": csv_data}
+        return {"csv_data": response.text}
     except Exception as e:
         return {"error": str(e)}
 
@@ -239,9 +229,7 @@ def get_relations(corpus_name: str, play_name: str) -> Dict:
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/relations"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        relations = response.json()
-
-        return {"relations": relations}
+        return {"relations": response.json()}
     except Exception as e:
         return {"error": str(e)}
 
@@ -251,20 +239,15 @@ def get_full_text(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        # The DraCor API doesn't have a direct plain text endpoint
-        # Use the spoken-text endpoint which returns plain text of all dialogue
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/spoken-text"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
 
-        # Get stage directions too
         stage_url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/stage-directions"
         stage_response = requests.get(stage_url, timeout=DEFAULT_TIMEOUT)
         stage_response.raise_for_status()
 
-        # Combine both for a more complete text representation
         text = f"DIALOGUE:\n\n{response.text}\n\nSTAGE DIRECTIONS:\n\n{stage_response.text}"
-
         return {"text": text}
     except Exception as e:
         return {"error": str(e)}
@@ -278,9 +261,7 @@ def get_tei_text(corpus_name: str, play_name: str) -> Dict:
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/tei"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        tei_text = response.text
-
-        return {"tei_text": tei_text}
+        return {"tei_text": response.text}
     except Exception as e:
         return {"error": str(e)}
 
@@ -289,12 +270,15 @@ def get_plays_with_character(wikidata_id: str) -> Dict:
     """List plays having a character identified by Wikidata ID."""
     try:
         validate_wikidata_id(wikidata_id)
-        plays = api_request(f"character/{wikidata_id}")
-        return {"plays": plays}
+        return {"plays": api_request(f"character/{wikidata_id}")}
     except Exception as e:
         return {"error": str(e)}
 
-# Tool implementations using decorators
+
+# ---------------------------------------------------------------------------
+# Tool implementations
+# ---------------------------------------------------------------------------
+
 @mcp.tool()
 def search_plays(
     query: str = None,
@@ -322,162 +306,130 @@ def search_plays(
     - gender_filter: Filter by plays with a certain gender ratio ("female_dominated", "male_dominated", "balanced")
     """
     try:
-        # Get corpora to search in
         corpora_result = get_corpora()
         if "error" in corpora_result:
             return {"error": corpora_result["error"]}
 
         all_corpora = corpora_result.get("corpora", [])
-        target_corpora = []
-
-        # Filter corpora if specified
         if corpus_name:
             target_corpora = [corp for corp in all_corpora if corpus_name.lower() in corp.get("name", "").lower()]
         else:
             target_corpora = all_corpora
 
-        # Preserve original filter value before the loop overwrites it
-        corpus_name_filter = corpus_name
-
-        # Initialize results
         results = []
         detailed_results = []
 
-        # For each corpus, search for plays
         for corpus in target_corpora:
             current_corpus_name = corpus.get("name")
 
-            # Get all plays from this corpus
             plays_result = get_plays(current_corpus_name)
             if "error" in plays_result:
                 continue
 
-            # Iterate through plays and apply filters
             for play in plays_result.get("plays", []):
-                # Initialize as a match until proven otherwise by filters
-                is_match = True
-
-                # Apply general text search if specified
-                if query and is_match:
-                    searchable_text = (
-                        play.get("title", "") + " " +
-                        " ".join([a.get("name", "") for a in play.get("authors", [])]) + " " +
-                        play.get("subtitle", "") + " " +
-                        play.get("originalTitle", "")
-                    ).lower()
-
+                # Apply text search filter
+                if query:
+                    searchable_text = " ".join([
+                        play.get("title", ""),
+                        " ".join(a.get("name", "") for a in play.get("authors", [])),
+                        play.get("subtitle", ""),
+                        play.get("originalTitle", ""),
+                    ]).lower()
                     if query.lower() not in searchable_text:
-                        is_match = False
+                        continue
 
-                # Apply country filter if specified
-                if country and is_match:
-                    play_country = (
-                        play.get("writtenIn", "") + " " +
-                        play.get("printedIn", "") + " " +
-                        " ".join([a.get("country", "") for a in play.get("authors", [])])
-                    ).lower()
-
+                # Apply country filter
+                if country:
+                    play_country = " ".join([
+                        play.get("writtenIn", ""),
+                        play.get("printedIn", ""),
+                        " ".join(a.get("country", "") for a in play.get("authors", [])),
+                    ]).lower()
                     if country.lower() not in play_country:
-                        is_match = False
+                        continue
 
-                # Apply language filter if specified
-                if language and is_match:
+                # Apply language filter
+                if language:
                     if language.lower() not in play.get("originalLanguage", "").lower():
-                        is_match = False
+                        continue
 
-                # Apply author filter if specified
-                if author and is_match:
+                # Apply author filter
+                if author:
                     author_names = [a.get("name", "").lower() for a in play.get("authors", [])]
                     if not any(author.lower() in name for name in author_names):
-                        is_match = False
+                        continue
 
-                # Apply year range filter if specified
-                if (year_from or year_to) and is_match:
+                # Apply year range filter
+                if year_from or year_to:
                     play_year = play.get("yearNormalized") or play.get("yearWritten") or play.get("yearPrinted")
-
                     if play_year is not None:
                         if year_from and play_year < year_from:
-                            is_match = False
-
+                            continue
                         if year_to and play_year > year_to:
-                            is_match = False
+                            continue
 
-                # If character name is specified, need to check character list
-                if character_name and is_match:
+                # Fetch characters once for both character_name and gender_filter checks
+                characters_list = None
+                if character_name or gender_filter:
                     try:
-                        # Get characters for this play
-                        play_name = play.get("name")
-                        characters_result = get_characters(current_corpus_name, play_name)
-
+                        current_play_name = play.get("name")
+                        characters_result = get_characters(current_corpus_name, current_play_name)
                         if "error" not in characters_result:
-                            character_found = False
-                            for character in characters_result.get("characters", []):
-                                if character_name.lower() in character.get("name", "").lower():
-                                    character_found = True
-                                    break
-
-                            if not character_found:
-                                is_match = False
-                        else:
-                            # If we can't get characters, we assume it's not a match
-                            is_match = False
+                            characters_list = characters_result.get("characters", [])
                     except Exception:
-                        # If error occurs, we assume it's not a match
-                        is_match = False
+                        pass
 
-                # Apply gender filter if specified
-                if gender_filter and is_match:
-                    try:
-                        # Get characters for this play
-                        play_name = play.get("name")
-                        characters_result = get_characters(current_corpus_name, play_name)
+                # Apply character name filter
+                if character_name:
+                    if characters_list is None:
+                        continue
+                    if not any(character_name.lower() in c.get("name", "").lower() for c in characters_list):
+                        continue
 
-                        if "error" not in characters_result:
-                            male_count = sum(1 for c in characters_result.get("characters", []) if c.get("gender") == "MALE")
-                            female_count = sum(1 for c in characters_result.get("characters", []) if c.get("gender") == "FEMALE")
+                # Apply gender ratio filter
+                if gender_filter:
+                    if characters_list is not None:
+                        try:
+                            male_count = sum(1 for c in characters_list if c.get("gender") == "MALE")
+                            female_count = sum(1 for c in characters_list if c.get("gender") == "FEMALE")
                             total = male_count + female_count
 
                             if total > 0:
                                 female_ratio = female_count / total
-
                                 if gender_filter == "female_dominated" and female_ratio <= 0.5:
-                                    is_match = False
+                                    continue
                                 elif gender_filter == "male_dominated" and female_ratio >= 0.5:
-                                    is_match = False
+                                    continue
                                 elif gender_filter == "balanced" and (female_ratio < 0.4 or female_ratio > 0.6):
-                                    is_match = False
-                    except Exception:
-                        # If error occurs, we keep it as a match
-                        pass
-
-                # If all filters passed, add to results
-                if is_match:
-                    # Add basic info to results
-                    results.append({
-                        "corpus": current_corpus_name,
-                        "play": play
-                    })
-
-                    # Try to add more detailed info for top results
-                    if len(detailed_results) < 5:
-                        try:
-                            play_name = play.get("name")
-                            # Get more details
-                            play_info = get_play(current_corpus_name, play_name)
-
-                            if "error" not in play_info:
-                                detailed_results.append({
-                                    "corpus": current_corpus_name,
-                                    "play_name": play_name,
-                                    "title": play.get("title"),
-                                    "author": play.get("authors", [{}])[0].get("name") if play.get("authors") else "Unknown",
-                                    "year": play.get("yearNormalized"),
-                                    "language": play.get("originalLanguage"),
-                                    "characters": len(play_info.get("characters", [])),
-                                    "link": f"https://dracor.org/{current_corpus_name}/{play_name}"
-                                })
+                                    continue
                         except Exception:
                             pass
+
+                # All filters passed -- add to results
+                results.append({
+                    "corpus": current_corpus_name,
+                    "play": play
+                })
+
+                # Collect detailed info for the first 5 matches
+                if len(detailed_results) < 5:
+                    try:
+                        current_play_name = play.get("name")
+                        play_info = get_play(current_corpus_name, current_play_name)
+
+                        if "error" not in play_info:
+                            detailed_results.append({
+                                "corpus": current_corpus_name,
+                                "play_name": current_play_name,
+                                "title": play.get("title"),
+                                "author": get_first_author(play, "Unknown"),
+                                "year": play.get("yearNormalized"),
+                                "language": play.get("originalLanguage"),
+                                "characters": len(play_info.get("characters", [])),
+                                "link": f"https://dracor.org/{current_corpus_name}/{current_play_name}"
+                            })
+                    except Exception:
+                        pass
 
         return {
             "count": len(results),
@@ -485,7 +437,7 @@ def search_plays(
             "top_results": detailed_results,
             "filters_applied": {
                 "query": query,
-                "corpus_name": corpus_name_filter,
+                "corpus_name": corpus_name,
                 "character_name": character_name,
                 "country": country,
                 "language": language,
@@ -516,25 +468,22 @@ def compare_plays(
         metrics1 = api_request(f"corpora/{corpus_name1}/plays/{play_name1}/metrics")
         metrics2 = api_request(f"corpora/{corpus_name2}/plays/{play_name2}/metrics")
 
-        # Compile comparison data
-        comparison = {
+        return {
             "plays": [
                 {
                     "title": play1.get("title"),
-                    "author": play1.get("authors", [{}])[0].get("name") if play1.get("authors") else None,
+                    "author": get_first_author(play1),
                     "year": play1.get("yearNormalized"),
                     "metrics": metrics1
                 },
                 {
                     "title": play2.get("title"),
-                    "author": play2.get("authors", [{}])[0].get("name") if play2.get("authors") else None,
+                    "author": get_first_author(play2),
                     "year": play2.get("yearNormalized"),
                     "metrics": metrics2
                 }
             ]
         }
-
-        return comparison
     except Exception as e:
         return {"error": str(e)}
 
@@ -544,84 +493,68 @@ def analyze_character_relations(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
-        # Get play data
-        play = api_request(f"corpora/{corpus_name}/plays/{play_name}")
 
-        # Get character data
+        play = api_request(f"corpora/{corpus_name}/plays/{play_name}")
         characters = api_request(f"corpora/{corpus_name}/plays/{play_name}/characters")
 
-        # Get network data in CSV format
+        # Fetch co-occurrence network (CSV format)
         url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/networkdata/csv"
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        csv_data = response.text
 
-        # Build character ID-to-name lookup for efficient resolution
         char_lookup = {char.get("id"): char.get("name") for char in characters}
 
-        # Parse CSV data to extract relations using proper CSV parser
+        # Parse CSV network data into relation dicts
         relations = []
-        csv_reader = csv.reader(io.StringIO(csv_data))
-        rows = list(csv_reader)
-        if len(rows) > 1:  # Skip header
-            for row in rows[1:]:
-                if len(row) >= 4:
-                    source = row[0]
-                    target = row[2]
-                    try:
-                        weight = int(row[3])
-                    except ValueError:
-                        weight = 0
+        rows = list(csv.reader(io.StringIO(response.text)))
+        for row in rows[1:]:  # skip header
+            if len(row) >= 4:
+                source, target = row[0], row[2]
+                try:
+                    weight = int(row[3])
+                except ValueError:
+                    weight = 0
+                relations.append({
+                    "source": char_lookup.get(source, source),
+                    "source_id": source,
+                    "target": char_lookup.get(target, target),
+                    "target_id": target,
+                    "weight": weight
+                })
 
-                    relations.append({
-                        "source": char_lookup.get(source, source),
-                        "source_id": source,
-                        "target": char_lookup.get(target, target),
-                        "target_id": target,
-                        "weight": weight
-                    })
-
-        # Sort by weight to identify strongest relationships
         relations.sort(key=lambda x: x.get("weight", 0), reverse=True)
 
-        # Try to get relations data if available
+        # Fetch explicit (formal) relations if available
+        formal_relations = []
         try:
             relations_url = f"{DRACOR_API_BASE_URL}/corpora/{corpus_name}/plays/{play_name}/relations/csv"
             relations_response = requests.get(relations_url, timeout=DEFAULT_TIMEOUT)
-            formal_relations = []
-
             if relations_response.status_code == 200:
-                csv_reader = csv.reader(io.StringIO(relations_response.text))
-                rel_rows = list(csv_reader)
-                if len(rel_rows) > 1:  # Skip header
-                    for row in rel_rows[1:]:
-                        if len(row) >= 4:
-                            source = row[0]
-                            target = row[2]
-                            relation_type = row[3]
-
-                            formal_relations.append({
-                                "source": char_lookup.get(source, source),
-                                "target": char_lookup.get(target, target),
-                                "type": relation_type
-                            })
+                rel_rows = list(csv.reader(io.StringIO(relations_response.text)))
+                for row in rel_rows[1:]:  # skip header
+                    if len(row) >= 4:
+                        source, target = row[0], row[2]
+                        formal_relations.append({
+                            "source": char_lookup.get(source, source),
+                            "target": char_lookup.get(target, target),
+                            "type": row[3]
+                        })
         except Exception:
             formal_relations = []
 
-        # Get metrics
         metrics = api_request(f"corpora/{corpus_name}/plays/{play_name}/metrics")
 
         return {
             "play": {
                 "title": play.get("title"),
-                "author": play.get("authors", [{}])[0].get("name") if play.get("authors") else None,
+                "author": get_first_author(play),
                 "year": play.get("yearNormalized")
             },
             "totalCharacters": len(characters),
             "totalRelations": len(relations),
-            "strongestRelations": relations[:10],  # Top 10 strongest relations
-            "weakestRelations": relations[-10:] if len(relations) >= 10 else relations,  # Bottom 10
-            "formalRelations": formal_relations,  # Explicit relations if available
+            "strongestRelations": relations[:10],
+            "weakestRelations": relations[-10:] if len(relations) >= 10 else relations,
+            "formalRelations": formal_relations,
             "metrics": metrics
         }
     except Exception as e:
@@ -633,27 +566,27 @@ def analyze_play_structure(corpus_name: str, play_name: str) -> Dict:
     try:
         validate_name(corpus_name, "corpus_name")
         validate_name(play_name, "play_name")
+
         play = api_request(f"corpora/{corpus_name}/plays/{play_name}")
         metrics = api_request(f"corpora/{corpus_name}/plays/{play_name}/metrics")
+        characters = api_request(f"corpora/{corpus_name}/plays/{play_name}/characters")
 
-        # Extract structural information from segments
+        # Classify segments into acts and scenes
         acts = []
         scenes = []
         for segment in play.get("segments", []):
-            if segment.get("type") == "act":
+            segment_type = segment.get("type")
+            if segment_type == "act":
                 acts.append({
                     "number": segment.get("number"),
                     "title": segment.get("title")
                 })
-            elif segment.get("type") == "scene":
+            elif segment_type == "scene":
                 scenes.append({
                     "number": segment.get("number"),
                     "title": segment.get("title"),
                     "speakers": segment.get("speakers", [])
                 })
-
-        # Get character data
-        characters = api_request(f"corpora/{corpus_name}/plays/{play_name}/characters")
 
         # Count characters by gender
         gender_counts = {"MALE": 0, "FEMALE": 0, "UNKNOWN": 0}
@@ -662,13 +595,9 @@ def analyze_play_structure(corpus_name: str, play_name: str) -> Dict:
             if gender in gender_counts:
                 gender_counts[gender] += 1
 
-        # Get spoken text by character data
-        spoken_text_by_char = api_request(f"corpora/{corpus_name}/plays/{play_name}/spoken-text-by-character")
-
-        # Calculate total words and distribution
+        # Build speaking distribution sorted by word count
         total_words = sum(char.get("numOfWords", 0) for char in characters)
         speaking_distribution = []
-
         if total_words > 0:
             for char in characters:
                 char_words = char.get("numOfWords", 0)
@@ -677,14 +606,11 @@ def analyze_play_structure(corpus_name: str, play_name: str) -> Dict:
                     "words": char_words,
                     "percentage": round((char_words / total_words) * 100, 2)
                 })
-
-            # Sort by word count
             speaking_distribution.sort(key=lambda x: x["words"], reverse=True)
 
-        # Get structural information
-        structure = {
+        return {
             "title": play.get("title"),
-            "authors": [author.get("name") for author in play.get("authors", [])],
+            "authors": [a.get("name") for a in play.get("authors", [])],
             "year": play.get("yearNormalized"),
             "yearWritten": play.get("yearWritten"),
             "yearPrinted": play.get("yearPrinted"),
@@ -700,10 +626,8 @@ def analyze_play_structure(corpus_name: str, play_name: str) -> Dict:
                 "total": len(characters),
                 "byGender": gender_counts
             },
-            "speakingDistribution": speaking_distribution[:10],  # Top 10 characters by speaking time
+            "speakingDistribution": speaking_distribution[:10],
         }
-
-        return structure
     except Exception as e:
         return {"error": str(e)}
 
@@ -764,19 +688,16 @@ def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
             try:
                 root = ET.fromstring(tei_text)
 
-                # Extract title (try with namespace first, then without)
                 title_elem = root.find('.//tei:titleStmt/tei:title', TEI_NS)
                 if title_elem is None:
                     title_elem = root.find('.//{http://www.tei-c.org/ns/1.0}title')
                 title = title_elem.text.strip() if title_elem is not None and title_elem.text else "Unknown"
 
-                # Extract authors
                 author_elems = root.findall('.//tei:titleStmt/tei:author', TEI_NS)
                 if not author_elems:
                     author_elems = root.findall('.//{http://www.tei-c.org/ns/1.0}author')
                 authors = [a.text.strip() for a in author_elems if a.text] or ["Unknown"]
 
-                # Extract structural elements
                 acts = root.findall('.//{http://www.tei-c.org/ns/1.0}div[@type="act"]')
                 scenes = root.findall('.//{http://www.tei-c.org/ns/1.0}div[@type="scene"]')
                 speeches = root.findall('.//{http://www.tei-c.org/ns/1.0}sp')
@@ -788,7 +709,6 @@ def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
                 stage_direction_count = len(stage_directions)
 
             except ET.ParseError:
-                # Fallback if XML parsing fails
                 title = "Unknown"
                 authors = ["Unknown"]
                 act_count = scene_count = speech_count = stage_direction_count = 0
@@ -845,7 +765,11 @@ def analyze_full_text(corpus_name: str, play_name: str) -> Dict:
     except Exception as e:
         return {"error": str(e)}
 
-# Prompt templates using decorators
+
+# ---------------------------------------------------------------------------
+# Prompt templates
+# ---------------------------------------------------------------------------
+
 @mcp.prompt()
 def analyze_play(corpus_name: str, play_name: str) -> str:
     """Create a prompt for analyzing a specific play."""
